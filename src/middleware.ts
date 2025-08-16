@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { paymentMiddleware } from "x402-next";
+import { Address } from "viem";
+import { paymentMiddleware, Network, Resource } from "x402-next";
 
-const RECEIVING_ADDRESS = "0xYourAddress"; // your receiving wallet address
+const facilitatorUrl = process.env.NEXT_PUBLIC_FACILITATOR_URL as Resource;
+const RECEIVING_ADDRESS = process.env.WALLET_RECEIVING as Address; // your receiving wallet address
+const network = process.env.NETWORK as Network;
 
 // Create the payment middleware
 export const middleware = paymentMiddleware(
@@ -10,7 +12,7 @@ export const middleware = paymentMiddleware(
     // Protect specific routes
     "/api/validate": {
       price: "$0.001",
-      network: "base-sepolia",
+      network: network,
       config: {
         description: "Validation endpoint",
         outputSchema: {
@@ -21,9 +23,6 @@ export const middleware = paymentMiddleware(
         },
       },
     },
-  },
-  {
-    url: "https://x402.org/facilitator", // testnet facilitator
   }
 );
 

@@ -124,7 +124,7 @@ export default function SignedInScreen() {
         baseURL: window.location.origin,
         path: '/api/validate',
         method: 'GET',
-        maxAmountPerRequest: 1000, // $0.001 USDC
+        maxAmountPerRequest: 10, // $0.001 USDC
         resource: 'GET /api/validate',
         mimeType: 'application/json',
         maxTimeoutSeconds: 30,

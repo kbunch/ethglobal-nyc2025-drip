@@ -9,13 +9,16 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@coinbase/cdp-core": "latest",
+    "@coinbase/cdp-hooks": "latest",
+    "@coinbase/cdp-react": "latest",
+    "@coinbase/x402": "^0.5.1",
     "next": "15.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "@coinbase/cdp-react": "latest",
-    "@coinbase/cdp-hooks": "latest",
-    "@coinbase/cdp-core": "latest",
-    "viem": "^2.8.6"
+    "viem": "^2.8.6",
+    "x402-express": "^0.5.2",
+    "x402-fetch": "^0.5.1"
   },
   "devDependencies": {
     "@types/node": "^20",

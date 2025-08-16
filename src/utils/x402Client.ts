@@ -1,6 +1,5 @@
-import axios from "axios";
 import { baseSepolia } from "viem/chains";
-import { withPaymentInterceptor } from "x402-axios";
+import { wrapFetchWithPayment } from "x402-fetch";
 import { PaymentRequirements } from "x402/types";
 import { formatUSDC } from "./chainConfig";
 import { checkUSDCBalanceForPaymentAtomic } from "./balanceChecker";
@@ -53,37 +52,54 @@ export async function makeX402Request({
   }
 
   const evmAccount = user.evmAccounts[0];
-  const account = await toViemAccount(evmAccount);
-
-  // Create axios instance with payment interceptor
-  const axiosInstance = axios.create({ baseURL });
+  console.log('EVM account details:', {
+    address: evmAccount,
+    type: typeof evmAccount
+  });
   
-  // Set up payment interceptor with viem account
-  // The x402-axios library will handle 402 responses automatically
-  const paymentRequirementsSelector = (paymentRequirements: PaymentRequirements[]) => {
-    // Return the first available payment requirement with our metadata
-    const selectedPayment = paymentRequirements[0];
-    if (selectedPayment) {
-      return {
-        ...selectedPayment,
-        resource: resource || `${method} ${path}`,
-        mimeType: mimeType || "application/json",
-        maxTimeoutSeconds: maxTimeoutSeconds || 30,
-      };
-    }
-    return selectedPayment;
-  };
-  const fetchWithPayment = withPaymentInterceptor(axiosInstance, account, paymentRequirementsSelector);
+  const account = await toViemAccount(evmAccount);
+  console.log('Viem account created:', {
+    address: account.address,
+    type: account.type
+  });
 
+  // Try using x402-fetch instead of x402-axios for better reliability
+  const fetchWithPayment = wrapFetchWithPayment(fetch, account);
+  
   try {
-    console.log(`Making ${method} request to ${baseURL}${path}`);
+    const fullUrl = `${baseURL}${path}`;
+    console.log(`Making ${method} request to ${fullUrl}`);
+    console.log('Request configuration:', { method, params: queryParams, data: body });
 
-    // Make the request (interceptor and x402 library will handle payment flow)
-    const response = await fetchWithPayment(path, {
+    // Build URL with query parameters
+    let url = fullUrl;
+    if (queryParams) {
+      const searchParams = new URLSearchParams(queryParams);
+      url += `?${searchParams.toString()}`;
+    }
+
+    // Make the request using x402-fetch
+    const response = await fetchWithPayment(url, {
       method,
-      params: queryParams,
-      data: body,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: body ? JSON.stringify(body) : undefined,
     });
+
+    console.log('Response received:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries())
+    });
+
+    // If we get a 402, the interceptor should have handled it automatically
+    if (response.status === 402) {
+      console.log('Received 402 response - interceptor should have handled this');
+      const responseText = await response.text();
+      console.log('Response data:', responseText);
+      throw new Error('Payment required but interceptor did not handle it');
+    }
 
     if (response.status !== 200) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -91,8 +107,7 @@ export async function makeX402Request({
 
     // Extract settlement info from X-PAYMENT-RESPONSE header
     let settlementInfo: SettlementInfo | undefined;
-    const paymentResponseHeader =
-      response.headers["x-payment-response"] || response.headers["X-PAYMENT-RESPONSE"];
+    const paymentResponseHeader = response.headers.get("x-payment-response");
     if (paymentResponseHeader) {
       try {
         settlementInfo = JSON.parse(atob(paymentResponseHeader));
@@ -102,11 +117,13 @@ export async function makeX402Request({
       }
     }
 
+    const responseData = await response.json();
+
     return {
       status: response.status,
       statusText: response.statusText,
-      data: response.data,
-      headers: response.headers,
+      data: responseData,
+      headers: Object.fromEntries(response.headers.entries()),
       settlementInfo,
     };
   } catch (error) {

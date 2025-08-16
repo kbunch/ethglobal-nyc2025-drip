@@ -7,7 +7,6 @@ import { createPublicClient, createWalletClient, http, formatEther, formatUnits,
 import { baseSepolia } from "viem/chains";
 
 import Header from "@/components/Header";
-import Transaction from "@/components/Transaction";
 import UserBalance from "@/components/UserBalance";
 import { makeX402Request, checkPaymentRequirements } from "@/utils/x402Client";
 import { formatUSDC } from "@/utils/chainConfig";
@@ -81,9 +80,8 @@ export default function SignedInScreen() {
   
   const formattedUsdc = useMemo(() => {
     if (usdcBalance === undefined) return undefined;
-    // USDC has 6 decimals
-    const formattedAmount = formatUnits(usdcBalance, 6);
-    return `$${Number(formattedAmount).toFixed(2)}`;
+    // Use the consistent formatUSDC function
+    return formatUSDC(usdcBalance.toString());
   }, [usdcBalance]);
 
   // x402 API test function using real implementation
@@ -178,14 +176,9 @@ export default function SignedInScreen() {
       <main className="main flex-col-container flex-grow">
         <div className="main-inner flex-col-container">
             <div className="card card--user-balance">
-                <UserBalance balance={formattedEth} asset="eth" />
                 <UserBalance balance={formattedUsdc} asset="usdc" />
             </div>
-          <div className="card card--transaction">
-            {isSignedIn && evmAddress && (
-              <Transaction balance={formattedEth} onSuccess={getBalances} />
-            )}
-          </div>
+
           
           {/* x402 API Test Section */}
           <div className="card">
@@ -199,7 +192,6 @@ export default function SignedInScreen() {
               <h3 className="font-semibold mb-2">Account Information:</h3>
               <div className="text-sm space-y-1">
                 <p><strong>EVM Address:</strong> {evmAddress}</p>
-                <p><strong>ETH Balance:</strong> {formattedEth || 'Loading...'}</p>
                 <p><strong>USDC Balance:</strong> {formattedUsdc || 'Loading...'}</p>
                 <p><strong>Required USDC:</strong> $0.001 (1000 units)</p>
                 <p><strong>Payment Status:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅ Sufficient' : '❌ Insufficient'}</p>

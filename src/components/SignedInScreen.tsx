@@ -2,7 +2,7 @@
 
 import { useEvmAddress, useIsSignedIn } from "@coinbase/cdp-hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPublicClient, http, formatEther } from "viem";
+import { createPublicClient, http, formatEther, formatUnits, erc20Abi } from "viem";
 import { baseSepolia } from "viem/chains";
 
 import Header from "@/components/Header";
@@ -23,38 +23,60 @@ const client = createPublicClient({
 export default function SignedInScreen() {
   const { isSignedIn } = useIsSignedIn();
   const { evmAddress } = useEvmAddress();
-  const [balance, setBalance] = useState<bigint | undefined>(undefined);
-
-  const formattedBalance = useMemo(() => {
-    if (balance === undefined) return undefined;
-    return formatEther(balance);
-  }, [balance]);
-
-  const getBalance = useCallback(async () => {
+  const [ethBalance, setEthBalance] = useState<bigint | undefined>(undefined);
+  const [usdcBalance, setUsdcBalance] = useState<bigint | undefined>(undefined);
+  
+  const getBalances = useCallback(async () => {
     if (!evmAddress) return;
-    const balance = await client.getBalance({
+  
+    // ETH balance
+    const ethBal = await client.getBalance({
       address: evmAddress,
     });
-    setBalance(balance);
+    setEthBalance(ethBal);
+  
+    // USDC balance
+    const usdcBal: bigint = await client.readContract({
+      address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // USDC on Base Sepolia
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [evmAddress],
+    });
+    
+    console.log("usdcBal", usdcBal);
+    setUsdcBalance(usdcBal);
   }, [evmAddress]);
 
+  const formattedEth = useMemo(() => {
+    if (ethBalance === undefined) return undefined;
+    return formatEther(ethBalance);
+  }, [ethBalance]);
+  
+  const formattedUsdc = useMemo(() => {
+    if (usdcBalance === undefined) return undefined;
+    // USDC has 6 decimals
+    const formattedAmount = formatUnits(usdcBalance, 6);
+    return `$${Number(formattedAmount).toFixed(2)}`;
+  }, [usdcBalance]);
+
   useEffect(() => {
-    getBalance();
-    const interval = setInterval(getBalance, 500);
+    getBalances();
+    const interval = setInterval(getBalances, 500);
     return () => clearInterval(interval);
-  }, [getBalance]);
+  }, [getBalances]);
 
   return (
     <>
       <Header />
       <main className="main flex-col-container flex-grow">
         <div className="main-inner flex-col-container">
-          <div className="card card--user-balance">
-            <UserBalance balance={formattedBalance} />
-          </div>
+            <div className="card card--user-balance">
+                <UserBalance balance={formattedEth} asset="eth" />
+                <UserBalance balance={formattedUsdc} asset="usdc" />
+            </div>
           <div className="card card--transaction">
             {isSignedIn && evmAddress && (
-              <Transaction balance={formattedBalance} onSuccess={getBalance} />
+              <Transaction balance={formattedEth} onSuccess={getBalances} />
             )}
           </div>
         </div>

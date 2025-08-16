@@ -3,8 +3,8 @@
 import { useEvmAddress, useIsSignedIn, useCurrentUser } from "@coinbase/cdp-hooks";
 import { toViemAccount } from "@coinbase/cdp-core";
 import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createPublicClient, http, formatEther, formatUnits, erc20Abi } from "viem";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { createPublicClient, createWalletClient, http, formatEther, formatUnits, erc20Abi } from "viem";
 import { baseSepolia } from "viem/chains";
 
 import Header from "@/components/Header";
@@ -41,6 +41,8 @@ export default function SignedInScreen() {
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   
+  const getBalancesRef = useRef<(() => Promise<void>) | null>(null);
+  
   const getBalances = useCallback(async () => {
     if (!evmAddress) return;
   
@@ -62,6 +64,9 @@ export default function SignedInScreen() {
     setUsdcBalance(usdcBal);
   }, [evmAddress]);
 
+  // Store the latest getBalances function in a ref
+  getBalancesRef.current = getBalances;
+
   const formattedEth = useMemo(() => {
     if (ethBalance === undefined) return undefined;
     return formatEther(ethBalance);
@@ -79,6 +84,8 @@ export default function SignedInScreen() {
     console.log('testX402API called');
     console.log('currentUser:', currentUser);
     console.log('evmAccounts:', currentUser?.evmAccounts);
+    console.log('Current USDC balance:', formattedUsdc);
+    console.log('Current ETH balance:', formattedEth);
     
     if (!currentUser) {
       setApiError('No current user available. Please ensure you are signed in.');
@@ -95,6 +102,12 @@ export default function SignedInScreen() {
       return;
     }
 
+    // Check if user has enough USDC balance
+    if (!usdcBalance || usdcBalance < 1000n) {
+      setApiError(`Insufficient USDC balance. You have ${formattedUsdc}, but need $0.001 (1000 units) for this payment.`);
+      return;
+    }
+
     setApiLoading(true);
     setApiError('');
     setApiResult(null);
@@ -107,45 +120,29 @@ export default function SignedInScreen() {
       const account = await toViemAccount(evmAccount);
       console.log('Viem Account:', account);
       
-      // Step 1: Make initial request
-      console.log('Making initial API request...');
-      const initialResponse = await fetch('/api/validate', {
+      // Use wrapFetchWithPayment to automatically handle 402 responses
+      // The CDP account from toViemAccount should be compatible with x402
+      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
+      
+      console.log('Making API request with x402 payment handling...');
+      const response = await fetchWithPayment('/api/validate', {
         method: 'GET',
       });
 
-      console.log('Initial response status:', initialResponse.status);
+      console.log('Response status:', response.status);
       
-      if (initialResponse.status === 402) {
-        // Payment required - handle manually
-        console.log('Payment required, handling manually...');
-        const paymentData = await initialResponse.json();
-        console.log('Payment data:', paymentData);
-        
-        // For now, just show the payment requirements
-        setApiResult({
-          status: 402,
-          data: paymentData,
-          message: 'Payment required - manual handling not yet implemented'
-        });
-        
-        // TODO: Implement manual payment flow using x402 core library
-        // This would involve:
-        // 1. Creating payment header using x402 core functions
-        // 2. Signing the payment with the viem account
-        // 3. Retrying the request with the payment header
-        
-      } else if (initialResponse.ok) {
+      if (response.ok) {
         // Success response
-        const body = await initialResponse.json();
+        const body = await response.json();
         console.log('Success response:', body);
         
         setApiResult({
-          status: initialResponse.status,
+          status: response.status,
           data: body
         });
       } else {
-        // Other error
-        const errorData = await initialResponse.json();
+        // Handle other errors
+        const errorData = await response.json();
         setApiError(`API Error: ${errorData.error || 'Unknown error'}`);
       }
 
@@ -174,10 +171,16 @@ export default function SignedInScreen() {
   }, [currentUser]);
 
   useEffect(() => {
-    getBalances();
-    const interval = setInterval(getBalances, 500);
-    return () => clearInterval(interval);
-  }, [getBalances]);
+    if (evmAddress) {
+      getBalances();
+      const interval = setInterval(() => {
+        if (getBalancesRef.current) {
+          getBalancesRef.current();
+        }
+      }, 500);
+      return () => clearInterval(interval);
+    }
+  }, [evmAddress]);
 
   return (
     <>
@@ -201,14 +204,33 @@ export default function SignedInScreen() {
               Test the x402 payment integration with automatic payment handling using your CDP wallet.
             </p>
             
+            {/* Account Information */}
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <h3 className="font-semibold mb-2">Account Information:</h3>
+              <div className="text-sm space-y-1">
+                <p><strong>EVM Address:</strong> {evmAddress}</p>
+                <p><strong>ETH Balance:</strong> {formattedEth || 'Loading...'}</p>
+                <p><strong>USDC Balance:</strong> {formattedUsdc || 'Loading...'}</p>
+                <p><strong>Required USDC:</strong> $0.001 (1000 units)</p>
+                <p><strong>Payment Status:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅ Sufficient' : '❌ Insufficient'}</p>
+              </div>
+            </div>
+            
             <div className="space-y-4">
               <button
                 onClick={testX402API}
-                disabled={apiLoading || !currentUser?.evmAccounts?.length}
+                disabled={apiLoading || !currentUser?.evmAccounts?.length || !usdcBalance || usdcBalance < 1000n}
                 className="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 disabled:bg-gray-400"
               >
                 {apiLoading ? 'Testing...' : 'Test x402 Payment API'}
               </button>
+
+              {!apiLoading && usdcBalance && usdcBalance < 1000n && (
+                <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+                  <strong>Insufficient USDC Balance:</strong> You need at least $0.001 USDC to test this API. 
+                  Current balance: {formattedUsdc}
+                </div>
+              )}
 
               {apiError && (
                 <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">

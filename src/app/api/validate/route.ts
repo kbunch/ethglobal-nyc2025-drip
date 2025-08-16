@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Your receiving wallet address - replace with your actual address
-const RECEIVING_ADDRESS = process.env.WALLET_RECEIVING || "0x0000000000000000000000000000000000000000";
+const RECEIVING_ADDRESS = process.env.WALLET_RECEIVING || "0x0919d75Ce615116DEDb4Ef6C1Dc413A3303dB136";
 
 // API route handler
 export async function GET(request: NextRequest) {

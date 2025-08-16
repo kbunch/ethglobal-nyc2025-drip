@@ -182,17 +182,11 @@ export default function SignedInScreen() {
           
           {/* x402 API Test Section */}
           <div className="card">
-            <h2 className="card-title">x402 Payment API Test</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Test the x402 payment integration with automatic payment handling using your CDP wallet.
-            </p>
+            <h2 className="card-title">Payment</h2>
             
             {/* Account Information */}
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <h3 className="font-semibold mb-2">Account Information:</h3>
               <div className="text-sm space-y-1">
-                <p><strong>EVM Address:</strong> {evmAddress}</p>
-                <p><strong>USDC Balance:</strong> {formattedUsdc || 'Loading...'}</p>
                 <p><strong>Required USDC:</strong> $0.001 (1000 units)</p>
                 <p><strong>Payment Status:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅ Sufficient' : '❌ Insufficient'}</p>
               </div>
@@ -251,16 +245,7 @@ export default function SignedInScreen() {
               )}
             </div>
 
-            <div className="mt-4 p-4 bg-blue-100 border border-blue-400 rounded-md">
-              <h3 className="font-semibold mb-2">How It Works:</h3>
-              <ol className="text-sm space-y-1">
-                <li>1. Click &quot;Test x402 Payment API&quot;</li>
-                <li>2. x402-axios automatically handles 402 Payment Required responses</li>
-                <li>3. Payment is completed using your CDP wallet</li>
-                <li>4. Request is retried with X-PAYMENT header</li>
-                <li>5. Receive success response with transaction details</li>
-              </ol>
-            </div>
+
           </div>
         </div>
       </main>

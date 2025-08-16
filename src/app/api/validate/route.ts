@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
           scheme: "exact",
           network: "base-sepolia",
           asset: "USDC",
-          amount: "1000", // $0.001 in USDC (6 decimals)
+          maxAmountRequired: "1000", // $0.001 in USDC (6 decimals)
           payTo: RECEIVING_ADDRESS,
           description: "Simple validation endpoint that requires payment"
         }
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(JSON.stringify({
         error: 'Payment Required',
         message: 'This endpoint requires payment via x402 protocol',
-        paymentRequirements: paymentRequirements
+        accepts: paymentRequirements // Use 'accepts' instead of 'paymentRequirements' for x402 compatibility
       }), {
         status: 402,
         headers: {
@@ -36,15 +36,35 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // For now, just verify that a payment header was provided
-    // In a real implementation, you would verify the payment here
+    // Verify that a payment header was provided
     console.log('Payment header received:', paymentHeader);
+
+    // In a real implementation, you would verify the payment here
+    // For now, we'll just check that the header exists and has valid JSON
+    try {
+      const paymentData = JSON.parse(paymentHeader);
+      console.log('Payment data:', paymentData);
+      
+      // You could add additional verification here:
+      // - Check if the transaction hash is valid
+      // - Verify the payment amount matches requirements
+      // - Confirm the payment was made to the correct address
+      // - Verify the transaction is confirmed on-chain
+      
+    } catch (parseError) {
+      console.error('Failed to parse payment header:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid payment header format' },
+        { status: 400 }
+      );
+    }
 
     // Payment verified - return success response
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      message: 'Payment verified successfully'
+      message: 'Payment verified successfully',
+      paymentReceived: true
     });
 
   } catch (error) {

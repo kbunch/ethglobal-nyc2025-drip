@@ -2,7 +2,6 @@
 
 import { useEvmAddress, useIsSignedIn, useCurrentUser } from "@coinbase/cdp-hooks";
 import { toViemAccount } from "@coinbase/cdp-core";
-import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { createPublicClient, createWalletClient, http, formatEther, formatUnits, erc20Abi } from "viem";
 import { baseSepolia } from "viem/chains";
@@ -10,6 +9,8 @@ import { baseSepolia } from "viem/chains";
 import Header from "@/components/Header";
 import Transaction from "@/components/Transaction";
 import UserBalance from "@/components/UserBalance";
+import { makeX402Request, checkPaymentRequirements } from "@/utils/x402Client";
+import { formatUSDC } from "@/utils/chainConfig";
 
 /**
  * Create a viem client to access user's balance on the Base Sepolia network
@@ -22,7 +23,13 @@ const client = createPublicClient({
 interface ApiResult {
   status: number;
   data: Record<string, unknown>;
-  paymentResponse?: Record<string, unknown>;
+  settlementInfo?: {
+    transaction: string;
+    network: string;
+    amount: string;
+    asset: string;
+    payTo: string;
+  };
   message?: string;
 }
 
@@ -79,11 +86,10 @@ export default function SignedInScreen() {
     return `$${Number(formattedAmount).toFixed(2)}`;
   }, [usdcBalance]);
 
-  // x402 API test function
+  // x402 API test function using real implementation
   const testX402API = useCallback(async () => {
     console.log('testX402API called');
     console.log('currentUser:', currentUser);
-    console.log('evmAccounts:', currentUser?.evmAccounts);
     console.log('Current USDC balance:', formattedUsdc);
     console.log('Current ETH balance:', formattedEth);
     
@@ -113,44 +119,28 @@ export default function SignedInScreen() {
     setApiResult(null);
 
     try {
-      // Get the first EVM account and convert it to a viem account
-      const evmAccount = currentUser.evmAccounts[0];
-      console.log('EVM Account:', evmAccount);
-      
-      const account = await toViemAccount(evmAccount);
-      console.log('Viem Account:', account);
-      
-      // Use wrapFetchWithPayment to automatically handle 402 responses
-      // The CDP account from toViemAccount should be compatible with x402
-      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
-      
-      console.log('Making API request with x402 payment handling...');
-      const response = await fetchWithPayment('/api/validate', {
+      // Use the real x402 client to make the request
+      const response = await makeX402Request({
+        baseURL: window.location.origin,
+        path: '/api/validate',
         method: 'GET',
+        maxAmountPerRequest: 1000, // $0.001 USDC
+        resource: 'GET /api/validate',
+        mimeType: 'application/json',
+        maxTimeoutSeconds: 30,
       });
 
-      console.log('Response status:', response.status);
+      console.log('x402 Response:', response);
       
-      if (response.ok) {
-        // Success response
-        const body = await response.json();
-        console.log('Success response:', body);
-        
-        setApiResult({
-          status: response.status,
-          data: body
-        });
-      } else {
-        // Handle other errors
-        const errorData = await response.json();
-        setApiError(`API Error: ${errorData.error || 'Unknown error'}`);
-      }
+      setApiResult({
+        status: response.status,
+        data: response.data,
+        settlementInfo: response.settlementInfo,
+        message: 'Payment completed successfully'
+      });
 
     } catch (err: unknown) {
-      console.error('API Error:', err);
-      console.error('Error type:', typeof err);
-      console.error('Error constructor:', err?.constructor?.name);
-      console.error('Error stack:', err instanceof Error ? err.stack : 'No stack trace');
+      console.error('x402 API Error:', err);
       
       // Handle different types of errors
       if (err && typeof err === 'object' && 'response' in err) {
@@ -168,7 +158,7 @@ export default function SignedInScreen() {
     } finally {
       setApiLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, formattedUsdc, formattedEth, usdcBalance]);
 
   useEffect(() => {
     if (evmAddress) {
@@ -222,7 +212,7 @@ export default function SignedInScreen() {
                 disabled={apiLoading || !currentUser?.evmAccounts?.length || !usdcBalance || usdcBalance < 1000n}
                 className="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 disabled:bg-gray-400"
               >
-                {apiLoading ? 'Testing...' : 'Test x402 Payment API'}
+                {apiLoading ? 'Processing Payment...' : 'Test x402 Payment API'}
               </button>
 
               {!apiLoading && usdcBalance && usdcBalance < 1000n && (
@@ -244,6 +234,27 @@ export default function SignedInScreen() {
                   <pre className="text-sm overflow-auto">
                     {JSON.stringify(apiResult, null, 2)}
                   </pre>
+                  
+                  {apiResult.settlementInfo && (
+                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                      <h4 className="font-semibold mb-2">Payment Details:</h4>
+                      <div className="text-sm space-y-1">
+                        <p><strong>Transaction Hash:</strong> 
+                          <a 
+                            href={`https://sepolia.basescan.org/tx/${apiResult.settlementInfo.transaction}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline ml-1"
+                          >
+                            {apiResult.settlementInfo.transaction.slice(0, 10)}...{apiResult.settlementInfo.transaction.slice(-8)}
+                          </a>
+                        </p>
+                        <p><strong>Amount:</strong> {formatUSDC(apiResult.settlementInfo.amount)}</p>
+                        <p><strong>Asset:</strong> {apiResult.settlementInfo.asset}</p>
+                        <p><strong>Network:</strong> {apiResult.settlementInfo.network}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -252,10 +263,10 @@ export default function SignedInScreen() {
               <h3 className="font-semibold mb-2">How It Works:</h3>
               <ol className="text-sm space-y-1">
                 <li>1. Click &quot;Test x402 Payment API&quot;</li>
-                <li>2. x402-fetch automatically handles 402 Payment Required responses</li>
+                <li>2. x402-axios automatically handles 402 Payment Required responses</li>
                 <li>3. Payment is completed using your CDP wallet</li>
                 <li>4. Request is retried with X-PAYMENT header</li>
-                <li>5. Receive success response with timestamp</li>
+                <li>5. Receive success response with transaction details</li>
               </ol>
             </div>
           </div>

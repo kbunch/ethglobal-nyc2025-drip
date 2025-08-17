@@ -292,7 +292,7 @@ export default function SignedInScreen() {
             {/* Account Information */}
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
               <div className="text-sm space-y-1">
-                <p><strong>Required USDC:</strong> $0.001 per minute</p>
+                <p>$0.001 per minute</p>
                 <p><strong>Sufficient Funds:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅' : '❌'}</p>
               </div>
             </div>

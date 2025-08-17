@@ -17,7 +17,7 @@ export default function UserBalance({ balance, asset }: Props) {
 
   return (
     <>
-      <h2 className="card-title">Available {assetMeta.name} balance</h2>
+      <h2 className="card-title">Available</h2>
       <p className="user-balance">
         {balance === undefined && (
           <LoadingSkeleton as="span" className="loading--balance" />

@@ -23,6 +23,9 @@ export const middleware = paymentMiddleware(
         },
       },
     },
+  },
+  {
+    url: facilitatorUrl, // for testnet
   }
 );
 

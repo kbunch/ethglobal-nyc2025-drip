@@ -118,15 +118,9 @@ export default function SignedInScreen() {
 
     try {
       // Use the real x402 client to make the request
-      const response = await makeX402Request({
-        baseURL: window.location.origin,
-        path: '/api/validate',
-        method: 'GET',
-        maxAmountPerRequest: 10, // $0.001 USDC
-        resource: 'GET /api/validate',
-        mimeType: 'application/json',
-        maxTimeoutSeconds: 30,
-      });
+      const response = await makeX402Request(
+        10, // $0.00
+      );
 
       console.log('x402 Response:', response);
       

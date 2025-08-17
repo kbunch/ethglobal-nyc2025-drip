@@ -43,6 +43,19 @@ export default function UserBalance({ balance, asset }: Props) {
           </a>
         </p>
       )}
+      
+      {asset === "usdc" && (
+        <p>
+          <a
+            href="https://portal.cdp.coinbase.com/products/faucet"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 underline"
+          >
+            Get More
+          </a>
+        </p>
+      )}
     </>
   );
 }

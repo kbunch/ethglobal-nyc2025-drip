@@ -5,19 +5,6 @@ import { formatUSDC } from "./chainConfig";
 import { checkUSDCBalanceForPaymentAtomic } from "./balanceChecker";
 import { getCurrentUser, toViemAccount } from "@coinbase/cdp-core";
 
-// Helper types for the x402 client
-export type X402RequestParams = {
-  baseURL: string;
-  path: string;
-  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-  queryParams?: Record<string, string>;
-  body?: unknown;
-  maxAmountPerRequest?: number;
-  paymentRequirements?: PaymentRequirements[];
-  resource?: string;
-  mimeType?: string;
-  maxTimeoutSeconds?: number;
-};
 
 export interface SettlementInfo {
   transaction: string;
@@ -31,73 +18,31 @@ export interface SettlementInfo {
  * Makes an HTTP request with x402 payment handling capabilities.
  * Handles payment requirements, tracks operations, and manages payment flow.
  */
-export async function makeX402Request({
-  baseURL,
-  path,
-  method,
-  queryParams,
-  body,
-  maxAmountPerRequest, // Used by checkPaymentRequirements helper function
-  paymentRequirements, // Used by checkPaymentRequirements helper function
-  resource,
-  mimeType,
-  maxTimeoutSeconds,
-}: X402RequestParams) {
+export async function makeX402Request(maxAmountPerRequest?: number) {
   // Silence unused variable warnings - these are used by helper functions or may be used in future
-  void maxAmountPerRequest;
-  void paymentRequirements;
   const user = await getCurrentUser();
+
   if (!user || !user.evmAccounts || user.evmAccounts.length === 0) {
     throw new Error("No CDP user or EVM accounts found");
   }
 
   const evmAccount = user.evmAccounts[0];
-  console.log('EVM account details:', {
-    address: evmAccount,
-    type: typeof evmAccount
-  });
-  
   const account = await toViemAccount(evmAccount);
-  console.log('Viem account created:', {
-    address: account.address,
-    type: account.type
-  });
 
   // Try using x402-fetch instead of x402-axios for better reliability
   const fetchWithPayment = wrapFetchWithPayment(fetch, account);
   
+  const url = '/api/validate';
   try {
-    const fullUrl = `${baseURL}${path}`;
-    console.log(`Making ${method} request to ${fullUrl}`);
-    console.log('Request configuration:', { method, params: queryParams, data: body });
-
-    // Build URL with query parameters
-    let url = fullUrl;
-    if (queryParams) {
-      const searchParams = new URLSearchParams(queryParams);
-      url += `?${searchParams.toString()}`;
-    }
-
-    // Make the request using x402-fetch
     const response = await fetchWithPayment(url, {
-      method,
       headers: {
+        method: 'GET',
         'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-
-    console.log('Response received:', {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries())
+      }
     });
 
     // If we get a 402, the interceptor should have handled it automatically
     if (response.status === 402) {
-      console.log('Received 402 response - interceptor should have handled this');
-      const responseText = await response.text();
-      console.log('Response data:', responseText);
       throw new Error('Payment required but interceptor did not handle it');
     }
 
@@ -127,12 +72,6 @@ export async function makeX402Request({
       settlementInfo,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const fullUrl = `${baseURL}${path}`;
-    
-    console.error(`Request failed: ${errorMessage}`);
-    console.error(`URL: ${fullUrl}`);
-    
     throw error;
   }
 }
@@ -149,6 +88,8 @@ export async function checkPaymentRequirements(
   }
 
   const selectedPayment = paymentRequirements[0];
+
+  console.log('Selected payment:', selectedPayment);
   
   // Check max amount per request
   if (maxAmountPerRequest && selectedPayment) {

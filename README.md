@@ -13,7 +13,9 @@ First, make sure you have your CDP Project ID:
 3. Go to the [Embedded Wallets CORS settings](https://portal.cdp.coinbase.com/products/embedded-wallets/cors)
 4. Click add origin and whitelist `http://localhost:3000` (or wherever your app will run)
 
-Then, copy the `env.example` file to `.env`, and populate the `NEXT_PUBLIC_CDP_PROJECT_ID` with your project id.
+Then, copy the `env.example` file to `.env`, and populate 
+- `NEXT_PUBLIC_CDP_PROJECT_ID` with your project id.
+- `WALLET_RECEIVING` with the wallet that will receive payments
 
 Now you can start the development server:
 
@@ -28,14 +30,4 @@ pnpm dev
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) to see your app.
-
-## Features
-
-This template comes with:
-- Next.js 15 App Router
-- CDP React components for authentication and wallet management
-- Example transaction components for Base Sepolia
-- Built-in TypeScript support
-- ESLint with Next.js configuration
-- Viem for type-safe Ethereum interactions
 

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CDP Next.js StarterKit",
-  description: "The CDP Next.js StarterKit",
+  title: "drip - streaming payments",
+  description: "drip - streaming payments solution",
 };
 
 /**

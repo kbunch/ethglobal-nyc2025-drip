@@ -10,6 +10,31 @@ import UserBalance from "@/components/UserBalance";
 import { makeX402Request } from "@/utils/x402Client";
 import { formatUSDC } from "@/utils/chainConfig";
 
+// localStorage keys
+const STORAGE_KEYS = {
+  TOTAL_ELAPSED_TIME: 'drip_total_elapsed_time',
+  SESSION_SPENDING: 'drip_session_spending',
+};
+
+// localStorage utility functions
+const saveToLocalStorage = (key: string, value: number) => {
+  try {
+    localStorage.setItem(key, value.toString());
+  } catch (error) {
+    console.warn('Failed to save to localStorage:', error);
+  }
+};
+
+const loadFromLocalStorage = (key: string, defaultValue: number = 0): number => {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored ? Number(stored) : defaultValue;
+  } catch (error) {
+    console.warn('Failed to load from localStorage:', error);
+    return defaultValue;
+  }
+};
+
 /**
  * Create a viem client to access user's balance on the Base Sepolia network
  */
@@ -274,6 +299,31 @@ export default function SignedInScreen() {
       return () => clearInterval(interval);
     }
   }, [evmAddress, getBalances]);
+
+  // Load persisted data on component mount
+  useEffect(() => {
+    const savedTotalElapsedTime = loadFromLocalStorage(STORAGE_KEYS.TOTAL_ELAPSED_TIME);
+    const savedSessionSpending = loadFromLocalStorage(STORAGE_KEYS.SESSION_SPENDING);
+    
+    if (savedTotalElapsedTime > 0) {
+      setTotalElapsedTime(savedTotalElapsedTime);
+      setElapsedTime(savedTotalElapsedTime);
+    }
+    
+    if (savedSessionSpending > 0) {
+      setSessionSpending(savedSessionSpending);
+    }
+  }, []);
+
+  // Save totalElapsedTime to localStorage whenever it changes
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.TOTAL_ELAPSED_TIME, totalElapsedTime);
+  }, [totalElapsedTime]);
+
+  // Save sessionSpending to localStorage whenever it changes
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.SESSION_SPENDING, sessionSpending);
+  }, [sessionSpending]);
 
   return (
     <>

@@ -191,24 +191,21 @@ export default function SignedInScreen() {
       setIsRunning(false);
       setSessionStartTime(null);
     } else {
-      // Start the timer and make initial payment request
-      const success = await makePaymentRequest();
-      if (success) {
-        const now = Date.now();
-        setSessionStartTime(now);
-        setIsRunning(true);
-        
-        // Start timer interval (updates every second)
-        timerIntervalRef.current = setInterval(() => {
-          const currentSessionTime = Date.now() - now;
-          setElapsedTime(totalElapsedTime + currentSessionTime);
-        }, 1000);
-        
-        // Start payment interval (every 60 seconds)
-        paymentIntervalRef.current = setInterval(async () => {
-          await makePaymentRequest();
-        }, 60000);
-      }
+      // Start the timer immediately without initial payment
+      const now = Date.now();
+      setSessionStartTime(now);
+      setIsRunning(true);
+      
+      // Start timer interval (updates every second)
+      timerIntervalRef.current = setInterval(() => {
+        const currentSessionTime = Date.now() - now;
+        setElapsedTime(totalElapsedTime + currentSessionTime);
+      }, 1000);
+      
+      // Start payment interval (first payment after 60 seconds)
+      paymentIntervalRef.current = setInterval(async () => {
+        await makePaymentRequest();
+      }, 60000);
     }
   }, [isRunning, makePaymentRequest, sessionStartTime, totalElapsedTime]);
 

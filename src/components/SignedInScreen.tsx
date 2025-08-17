@@ -49,6 +49,8 @@ export default function SignedInScreen() {
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [sessionSpending, setSessionSpending] = useState(0); // Track spending in cents (1000 units = 1 cent)
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [totalElapsedTime, setTotalElapsedTime] = useState(0); // Accumulated time across start/stop cycles
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const paymentIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -165,9 +167,9 @@ export default function SignedInScreen() {
   // Start/Stop button handler
   const handleStartStop = useCallback(async () => {
     if (isRunning) {
-      // Stop the timer and intervals (keep session data)
-      setIsRunning(false);
+      // Stop the timer and intervals (accumulate elapsed time)
       
+      // First, clear intervals to stop any updates
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
@@ -177,16 +179,29 @@ export default function SignedInScreen() {
         clearInterval(paymentIntervalRef.current);
         paymentIntervalRef.current = null;
       }
+      
+      // Accumulate the elapsed time from this session
+      if (sessionStartTime) {
+        const currentSessionTime = Date.now() - sessionStartTime;
+        const newTotalTime = totalElapsedTime + currentSessionTime;
+        setTotalElapsedTime(newTotalTime);
+        setElapsedTime(newTotalTime);
+      }
+      
+      setIsRunning(false);
+      setSessionStartTime(null);
     } else {
       // Start the timer and make initial payment request
       const success = await makePaymentRequest();
       if (success) {
         const now = Date.now();
+        setSessionStartTime(now);
         setIsRunning(true);
         
         // Start timer interval (updates every second)
         timerIntervalRef.current = setInterval(() => {
-          setElapsedTime(Date.now() - now);
+          const currentSessionTime = Date.now() - now;
+          setElapsedTime(totalElapsedTime + currentSessionTime);
         }, 1000);
         
         // Start payment interval (every 60 seconds)
@@ -195,7 +210,31 @@ export default function SignedInScreen() {
         }, 60000);
       }
     }
-  }, [isRunning, makePaymentRequest]);
+  }, [isRunning, makePaymentRequest, sessionStartTime, totalElapsedTime]);
+
+  // Reset session handler
+  const handleResetSession = useCallback(() => {
+    // Stop timer if running
+    if (isRunning) {
+      setIsRunning(false);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      if (paymentIntervalRef.current) {
+        clearInterval(paymentIntervalRef.current);
+        paymentIntervalRef.current = null;
+      }
+    }
+    
+    // Reset all session data
+    setElapsedTime(0);
+    setTotalElapsedTime(0);
+    setSessionSpending(0);
+    setSessionStartTime(null);
+    setApiResult(null);
+    setApiError('');
+  }, [isRunning]);
 
   // Cleanup intervals on unmount
   useEffect(() => {
@@ -256,6 +295,7 @@ export default function SignedInScreen() {
             {/* Account Information */}
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
               <div className="text-sm space-y-1">
+                <p><strong>Required USDC:</strong> $0.001 per minute</p>
                 <p><strong>Sufficient Funds:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅' : '❌'}</p>
               </div>
             </div>
@@ -283,6 +323,8 @@ export default function SignedInScreen() {
                   <span className="text-sm text-gray-600">{formatCurrency(sessionSpending)}</span>
                 </div>
               </div>
+
+
 
               {!apiLoading && usdcBalance && usdcBalance < 1000n && (
                 <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">

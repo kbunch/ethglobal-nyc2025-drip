@@ -48,6 +48,7 @@ export default function SignedInScreen() {
   // Timer and recurring payment state
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [sessionSpending, setSessionSpending] = useState(0); // Track spending in cents (1000 units = 1 cent)
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const paymentIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -134,6 +135,8 @@ export default function SignedInScreen() {
       });
       
       setApiError('');
+      // Increment session spending (1000 units = $0.001 = 0.1 cents)
+      setSessionSpending(prev => prev + 1); // Add 1 cent per payment
       return true;
 
     } catch (err: unknown) {
@@ -162,9 +165,8 @@ export default function SignedInScreen() {
   // Start/Stop button handler
   const handleStartStop = useCallback(async () => {
     if (isRunning) {
-      // Stop the timer and intervals
+      // Stop the timer and intervals (keep session data)
       setIsRunning(false);
-      setElapsedTime(0);
       
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
@@ -181,7 +183,6 @@ export default function SignedInScreen() {
       if (success) {
         const now = Date.now();
         setIsRunning(true);
-        setElapsedTime(0);
         
         // Start timer interval (updates every second)
         timerIntervalRef.current = setInterval(() => {
@@ -216,6 +217,16 @@ export default function SignedInScreen() {
     return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   }, []);
 
+  // Format currency for display
+  const formatCurrency = useCallback((cents: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(cents / 100);
+  }, []);
+
   useEffect(() => {
     if (evmAddress) {
       getBalances();
@@ -245,7 +256,6 @@ export default function SignedInScreen() {
             {/* Account Information */}
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
               <div className="text-sm space-y-1">
-                <p><strong>Required USDC:</strong> $0.001 per minute</p>
                 <p><strong>Sufficient Funds:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅' : '❌'}</p>
               </div>
             </div>
@@ -265,13 +275,14 @@ export default function SignedInScreen() {
               </button>
 
               {/* Timer Display */}
-              {isRunning && (
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                  <div className="flex justify-center">
-                    <span className="text-lg font-mono">{formatElapsedTime(elapsedTime)}</span>
-                  </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <div className="flex justify-center">
+                  <span className="text-lg font-mono">{formatElapsedTime(elapsedTime)}</span>
                 </div>
-              )}
+                <div className="flex justify-center mt-2">
+                  <span className="text-sm text-gray-600">{formatCurrency(sessionSpending)}</span>
+                </div>
+              </div>
 
               {!apiLoading && usdcBalance && usdcBalance < 1000n && (
                 <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">

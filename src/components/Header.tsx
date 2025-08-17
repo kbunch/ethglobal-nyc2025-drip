@@ -33,7 +33,7 @@ export default function Header() {
   return (
     <header>
       <div className="header-inner">
-        <h1 className="site-title">drip</h1>
+        <img src="/logo.png" alt="Drip Logo" className="site-title" style={{ height: '2rem', width: 'auto' }} />
         <div className="user-info flex-row-container">
           {evmAddress && (
             <button

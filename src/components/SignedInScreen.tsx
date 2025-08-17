@@ -1,14 +1,13 @@
 "use client";
 
-import { useEvmAddress, useIsSignedIn, useCurrentUser } from "@coinbase/cdp-hooks";
-import { toViemAccount } from "@coinbase/cdp-core";
+import { useEvmAddress, useCurrentUser } from "@coinbase/cdp-hooks";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { createPublicClient, createWalletClient, http, formatEther, formatUnits, erc20Abi } from "viem";
+import { createPublicClient, http, formatEther, erc20Abi } from "viem";
 import { baseSepolia } from "viem/chains";
 
 import Header from "@/components/Header";
 import UserBalance from "@/components/UserBalance";
-import { makeX402Request, checkPaymentRequirements } from "@/utils/x402Client";
+import { makeX402Request } from "@/utils/x402Client";
 import { formatUSDC } from "@/utils/chainConfig";
 
 /**
@@ -36,7 +35,6 @@ interface ApiResult {
  * The Signed In screen
  */
 export default function SignedInScreen() {
-  const { isSignedIn } = useIsSignedIn();
   const { evmAddress } = useEvmAddress();
   const { currentUser } = useCurrentUser();
   const [ethBalance, setEthBalance] = useState<bigint | undefined>(undefined);
@@ -46,6 +44,12 @@ export default function SignedInScreen() {
   const [apiResult, setApiResult] = useState<ApiResult | null>(null);
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState('');
+  
+  // Timer and recurring payment state
+  const [isRunning, setIsRunning] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const paymentIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const getBalancesRef = useRef<(() => Promise<void>) | null>(null);
   
@@ -84,38 +88,36 @@ export default function SignedInScreen() {
     return formatUSDC(usdcBalance.toString());
   }, [usdcBalance]);
 
-  // x402 API test function using real implementation
-  const testX402API = useCallback(async () => {
-    console.log('testX402API called');
+  // Handler for making X402 requests and updating status
+  const makePaymentRequest = useCallback(async () => {
+    console.log('makePaymentRequest called');
     console.log('currentUser:', currentUser);
     console.log('Current USDC balance:', formattedUsdc);
     console.log('Current ETH balance:', formattedEth);
     
     if (!currentUser) {
       setApiError('No current user available. Please ensure you are signed in.');
-      return;
+      return false;
     }
 
     if (!currentUser.evmAccounts) {
       setApiError('No EVM accounts available. Please ensure you have a wallet set up.');
-      return;
+      return false;
     }
 
     if (currentUser.evmAccounts.length === 0) {
       setApiError('No EVM accounts available. Please ensure you have a wallet set up.');
-      return;
+      return false;
     }
 
     // Check if user has enough USDC balance
     if (!usdcBalance || usdcBalance < 1000n) {
       setApiError(`Insufficient USDC balance. You have ${formattedUsdc}, but need $0.001 (1000 units) for this payment.`);
-      return;
+      return false;
     }
 
     setApiLoading(true);
-    setApiError('');
-    setApiResult(null);
-
+    
     try {
       // Use the real x402 client to make the request
       const response = await makeX402Request(
@@ -130,6 +132,9 @@ export default function SignedInScreen() {
         settlementInfo: response.settlementInfo,
         message: 'Payment completed successfully'
       });
+      
+      setApiError('');
+      return true;
 
     } catch (err: unknown) {
       console.error('x402 API Error:', err);
@@ -147,10 +152,69 @@ export default function SignedInScreen() {
       } else {
         setApiError('An unexpected error occurred');
       }
+      
+      return false;
     } finally {
       setApiLoading(false);
     }
   }, [currentUser, formattedUsdc, formattedEth, usdcBalance]);
+
+  // Start/Stop button handler
+  const handleStartStop = useCallback(async () => {
+    if (isRunning) {
+      // Stop the timer and intervals
+      setIsRunning(false);
+      setElapsedTime(0);
+      
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      
+      if (paymentIntervalRef.current) {
+        clearInterval(paymentIntervalRef.current);
+        paymentIntervalRef.current = null;
+      }
+    } else {
+      // Start the timer and make initial payment request
+      const success = await makePaymentRequest();
+      if (success) {
+        const now = Date.now();
+        setIsRunning(true);
+        setElapsedTime(0);
+        
+        // Start timer interval (updates every second)
+        timerIntervalRef.current = setInterval(() => {
+          setElapsedTime(Date.now() - now);
+        }, 1000);
+        
+        // Start payment interval (every 60 seconds)
+        paymentIntervalRef.current = setInterval(async () => {
+          await makePaymentRequest();
+        }, 60000);
+      }
+    }
+  }, [isRunning, makePaymentRequest]);
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+      if (paymentIntervalRef.current) {
+        clearInterval(paymentIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Format elapsed time as MM:SS
+  const formatElapsedTime = useCallback((milliseconds: number) => {
+    const seconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }, []);
 
   useEffect(() => {
     if (evmAddress) {
@@ -162,7 +226,7 @@ export default function SignedInScreen() {
       }, 500);
       return () => clearInterval(interval);
     }
-  }, [evmAddress]);
+  }, [evmAddress, getBalances]);
 
   return (
     <>
@@ -181,19 +245,33 @@ export default function SignedInScreen() {
             {/* Account Information */}
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
               <div className="text-sm space-y-1">
-                <p><strong>Required USDC:</strong> $0.001 (1000 units)</p>
-                <p><strong>Payment Status:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅ Sufficient' : '❌ Insufficient'}</p>
+                <p><strong>Required USDC:</strong> $0.001 per minute</p>
+                <p><strong>Sufficient Funds:</strong> {usdcBalance && usdcBalance >= 1000n ? '✅' : '❌'}</p>
               </div>
             </div>
             
             <div className="space-y-4">
+              {/* Start/Stop Button */}
               <button
-                onClick={testX402API}
-                disabled={apiLoading || !currentUser?.evmAccounts?.length || !usdcBalance || usdcBalance < 1000n}
-                className="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 disabled:bg-gray-400"
+                onClick={handleStartStop}
+                disabled={(!isRunning && apiLoading) || !currentUser?.evmAccounts?.length || !usdcBalance || usdcBalance < 1000n}
+                className={`w-full text-white p-3 rounded-md font-medium ${
+                  isRunning 
+                    ? 'bg-red-500 hover:bg-red-600' 
+                    : 'bg-green-500 hover:bg-green-600'
+                } disabled:bg-gray-400`}
               >
-                {apiLoading ? 'Processing Payment...' : 'Test x402 Payment API'}
+                {(!isRunning && apiLoading) ? 'Processing Payment...' : isRunning ? 'Stop' : 'Start'}
               </button>
+
+              {/* Timer Display */}
+              {isRunning && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                  <div className="flex justify-center">
+                    <span className="text-lg font-mono">{formatElapsedTime(elapsedTime)}</span>
+                  </div>
+                </div>
+              )}
 
               {!apiLoading && usdcBalance && usdcBalance < 1000n && (
                 <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
@@ -205,36 +283,6 @@ export default function SignedInScreen() {
               {apiError && (
                 <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
                   {apiError}
-                </div>
-              )}
-
-              {apiResult && (
-                <div className="bg-gray-100 p-4 rounded-md">
-                  <h3 className="font-semibold mb-2">API Response:</h3>
-                  <pre className="text-sm overflow-auto">
-                    {JSON.stringify(apiResult, null, 2)}
-                  </pre>
-                  
-                  {apiResult.settlementInfo && (
-                    <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
-                      <h4 className="font-semibold mb-2">Payment Details:</h4>
-                      <div className="text-sm space-y-1">
-                        <p><strong>Transaction Hash:</strong> 
-                          <a 
-                            href={`https://sepolia.basescan.org/tx/${apiResult.settlementInfo.transaction}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline ml-1"
-                          >
-                            {apiResult.settlementInfo.transaction.slice(0, 10)}...{apiResult.settlementInfo.transaction.slice(-8)}
-                          </a>
-                        </p>
-                        <p><strong>Amount:</strong> {formatUSDC(apiResult.settlementInfo.amount)}</p>
-                        <p><strong>Asset:</strong> {apiResult.settlementInfo.asset}</p>
-                        <p><strong>Network:</strong> {apiResult.settlementInfo.network}</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

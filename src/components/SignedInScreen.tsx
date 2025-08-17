@@ -98,7 +98,6 @@ export default function SignedInScreen() {
       args: [evmAddress],
     });
     
-    console.log("usdcBal", usdcBal);
     setUsdcBalance(usdcBal);
   }, [evmAddress]);
 
@@ -162,8 +161,8 @@ export default function SignedInScreen() {
       });
       
       setApiError('');
-      // Increment session spending (1000 units = $0.001 = 0.1 cents)
-      setSessionSpending(prev => prev + 1); // Add 1 cent per payment
+      // Increment session spending (10 units = $0.001 = 0.1 cents)
+      setSessionSpending(prev => prev + 0.1); // Add 0.1 cents per payment ($0.001)
       return true;
 
     } catch (err: unknown) {
@@ -258,6 +257,38 @@ export default function SignedInScreen() {
     setApiError('');
   }, [isRunning]);
 
+  // Clear localStorage handler
+  const handleClearStorage = useCallback(() => {
+    // Stop timer if running
+    if (isRunning) {
+      setIsRunning(false);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      if (paymentIntervalRef.current) {
+        clearInterval(paymentIntervalRef.current);
+        paymentIntervalRef.current = null;
+      }
+    }
+    
+    // Clear localStorage items
+    try {
+      localStorage.removeItem(STORAGE_KEYS.TOTAL_ELAPSED_TIME);
+      localStorage.removeItem(STORAGE_KEYS.SESSION_SPENDING);
+    } catch (error) {
+      console.warn('Failed to clear localStorage:', error);
+    }
+    
+    // Reset all session data
+    setElapsedTime(0);
+    setTotalElapsedTime(0);
+    setSessionSpending(0);
+    setSessionStartTime(null);
+    setApiResult(null);
+    setApiError('');
+  }, [isRunning]);
+
   // Cleanup intervals on unmount
   useEffect(() => {
     return () => {
@@ -278,13 +309,13 @@ export default function SignedInScreen() {
     return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
   }, []);
 
-  // Format currency for display
+  // Format currency for display with 6 decimal places
   const formatCurrency = useCallback((cents: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 6,
+      maximumFractionDigits: 6,
     }).format(cents / 100);
   }, []);
 
@@ -348,18 +379,28 @@ export default function SignedInScreen() {
             </div>
             
             <div className="space-y-4">
-              {/* Start/Stop Button */}
-              <button
-                onClick={handleStartStop}
-                disabled={(!isRunning && apiLoading) || !currentUser?.evmAccounts?.length || !usdcBalance || usdcBalance < 1000n}
-                className={`w-full text-white p-3 rounded-md font-medium ${
-                  isRunning 
-                    ? 'bg-red-500 hover:bg-red-600' 
-                    : 'bg-green-500 hover:bg-green-600'
-                } disabled:bg-gray-400`}
-              >
-                {(!isRunning && apiLoading) ? 'Processing Payment...' : isRunning ? 'Stop' : 'Start'}
-              </button>
+              {/* Start/Stop Button and Clear Button */}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleStartStop}
+                  disabled={(!isRunning && apiLoading) || !currentUser?.evmAccounts?.length || !usdcBalance || usdcBalance < 1000n}
+                  className={`flex-1 text-white p-3 rounded-md font-medium ${
+                    isRunning 
+                      ? 'bg-red-500 hover:bg-red-600' 
+                      : 'bg-green-500 hover:bg-green-600'
+                  } disabled:bg-gray-400`}
+                >
+                  {(!isRunning && apiLoading) ? 'Processing Payment...' : isRunning ? 'Stop' : 'Start'}
+                </button>
+                
+                <button
+                  onClick={handleClearStorage}
+                  className="px-4 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-md font-medium"
+                  title="Clear timer and amounts"
+                >
+                  Clear
+                </button>
+              </div>
 
               {/* Timer Display */}
               <div className="bg-blue-50 border border-blue-200 rounded-md p-3">

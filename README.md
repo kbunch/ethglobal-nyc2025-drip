@@ -1,29 +1,8 @@
-# CDP React App
+# drip - a streaming payments POC
 
 This project was generated with [`@coinbase/create-cdp-app`](https://coinbase.github.io/cdp-web/modules/_coinbase_create-cdp-app.html) using the Next.js template.
 
-## Project Structure
 
-```
-src/
-├── app/                  # Next.js App Router directory
-│   ├── favicon.ico      # Application favicon
-│   ├── globals.css      # Global styles and theme variables
-│   ├── layout.tsx       # Root layout with providers and global UI
-│   └── page.tsx         # Home page component
-│
-└── components/          # Reusable React components
-    ├── ClientApp.tsx    # Client-side application wrapper
-    ├── Header.tsx       # Navigation header with authentication status
-    ├── Icons.tsx        # Reusable icon components
-    ├── Loading.tsx      # Loading state component
-    ├── Providers.tsx    # CDP and theme providers setup
-    ├── SignInScreen.tsx # Authentication screen with CDP sign-in flow
-    ├── SignedInScreen.tsx # Screen displayed after successful authentication
-    ├── theme.ts         # Theme configuration and styling constants
-    ├── Transaction.tsx  # Example transaction flow using CDP Hooks
-    └── UserBalance.tsx  # Component to display user's wallet balance
-```
 
 ## Getting Started
 
@@ -38,23 +17,6 @@ Then, copy the `env.example` file to `.env`, and populate the `NEXT_PUBLIC_CDP_P
 
 Now you can start the development server:
 
-Using npm:
-```bash
-# Install dependencies
-npm install
-
-# Start the development server
-npm run dev
-```
-
-Using yarn:
-```bash
-# Install dependencies
-yarn
-
-# Start the development server
-yarn dev
-```
 
 Using pnpm:
 ```bash
@@ -77,9 +39,3 @@ This template comes with:
 - ESLint with Next.js configuration
 - Viem for type-safe Ethereum interactions
 
-## Learn More
-
-- [CDP Documentation](https://docs.cloud.coinbase.com/cdp/docs)
-- [CDP React Documentation](https://docs.cloud.coinbase.com/cdp/docs/react-components)
-- [CDP Portal](https://portal.cdp.coinbase.com)
-- [Vite Documentation](https://vitejs.dev)

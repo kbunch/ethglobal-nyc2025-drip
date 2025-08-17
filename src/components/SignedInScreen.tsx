@@ -15,6 +15,7 @@ const STORAGE_KEYS = {
   TOTAL_ELAPSED_TIME: 'drip_total_elapsed_time',
   SESSION_SPENDING: 'drip_session_spending',
   LAST_PAYMENT_MINUTE: 'drip_last_payment_minute',
+  SESSION_START_TIME: 'drip_session_start_time',
 };
 
 // localStorage utility functions
@@ -209,6 +210,13 @@ export default function SignedInScreen() {
         setElapsedTime(newTotalTime);
       }
       
+      // Clear session start time from localStorage since we're stopping
+      try {
+        localStorage.removeItem(STORAGE_KEYS.SESSION_START_TIME);
+      } catch (error) {
+        console.warn('Failed to remove session start time from localStorage:', error);
+      }
+      
       setIsRunning(false);
       setSessionStartTime(null);
     } else {
@@ -216,6 +224,9 @@ export default function SignedInScreen() {
       const now = Date.now();
       setSessionStartTime(now);
       setIsRunning(true);
+      
+      // Save session start time to localStorage for persistence across page refreshes
+      saveToLocalStorage(STORAGE_KEYS.SESSION_START_TIME, now);
       
       // Reset the processed minute ref when starting
       lastProcessedMinuteRef.current = lastPaymentMinute;
@@ -227,7 +238,7 @@ export default function SignedInScreen() {
         setElapsedTime(newElapsedTime);
         
         // Check if we've crossed a new interval mark
-        const currentMinute = Math.floor(newElapsedTime / (1000 * 10)); // Convert to 10-second intervals
+        const currentMinute = Math.floor(newElapsedTime / (1000 * 60)); // Convert to 10-second intervals
         if (currentMinute > lastPaymentMinute && currentMinute > 0 && !apiLoading && currentMinute > lastProcessedMinuteRef.current) {
           console.log(`Crossed interval mark: ${currentMinute}, last payment minute: ${lastPaymentMinute}, last processed: ${lastProcessedMinuteRef.current}`);
           
@@ -303,6 +314,7 @@ export default function SignedInScreen() {
       localStorage.removeItem(STORAGE_KEYS.TOTAL_ELAPSED_TIME);
       localStorage.removeItem(STORAGE_KEYS.SESSION_SPENDING);
       localStorage.removeItem(STORAGE_KEYS.LAST_PAYMENT_MINUTE);
+      localStorage.removeItem(STORAGE_KEYS.SESSION_START_TIME);
     } catch (error) {
       console.warn('Failed to clear localStorage:', error);
     }
@@ -326,6 +338,41 @@ export default function SignedInScreen() {
       }
     };
   }, []);
+
+  // Save current session time before page unloads (refresh, navigation, close)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // If timer is running, save the current accumulated time
+      if (isRunning && sessionStartTime) {
+        const currentSessionTime = Date.now() - sessionStartTime;
+        const newTotalTime = totalElapsedTime + currentSessionTime;
+        
+        console.log('Saving timer state on page unload:', {
+          sessionStartTime,
+          currentSessionTime,
+          totalElapsedTime,
+          newTotalTime,
+          isRunning
+        });
+        
+        // Save the accumulated time
+        saveToLocalStorage(STORAGE_KEYS.TOTAL_ELAPSED_TIME, newTotalTime);
+        
+        // Remove session start time since we've accumulated the time
+        try {
+          localStorage.removeItem(STORAGE_KEYS.SESSION_START_TIME);
+        } catch (error) {
+          console.warn('Failed to remove session start time on unload:', error);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isRunning, sessionStartTime, totalElapsedTime]);
 
   // Format elapsed time as MM:SS
   const formatElapsedTime = useCallback((milliseconds: number) => {
@@ -363,6 +410,8 @@ export default function SignedInScreen() {
     const savedSessionSpending = loadFromLocalStorage(STORAGE_KEYS.SESSION_SPENDING);
     const savedLastPaymentMinute = loadFromLocalStorage(STORAGE_KEYS.LAST_PAYMENT_MINUTE);
     
+    // Simply restore the saved values without any session time calculation
+    // The session time will be saved on page unload, not calculated on load
     if (savedTotalElapsedTime > 0) {
       setTotalElapsedTime(savedTotalElapsedTime);
       setElapsedTime(savedTotalElapsedTime);
@@ -375,6 +424,13 @@ export default function SignedInScreen() {
     if (savedLastPaymentMinute > 0) {
       setLastPaymentMinute(savedLastPaymentMinute);
       lastProcessedMinuteRef.current = savedLastPaymentMinute; // Initialize ref with saved value
+    }
+    
+    // Clean up any leftover session start time from previous sessions
+    try {
+      localStorage.removeItem(STORAGE_KEYS.SESSION_START_TIME);
+    } catch (error) {
+      console.warn('Failed to remove session start time during cleanup:', error);
     }
   }, []);
 

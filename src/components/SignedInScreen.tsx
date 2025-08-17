@@ -14,6 +14,7 @@ import { formatUSDC } from "@/utils/chainConfig";
 const STORAGE_KEYS = {
   TOTAL_ELAPSED_TIME: 'drip_total_elapsed_time',
   SESSION_SPENDING: 'drip_session_spending',
+  LAST_PAYMENT_MINUTE: 'drip_last_payment_minute',
 };
 
 // localStorage utility functions
@@ -76,8 +77,9 @@ export default function SignedInScreen() {
   const [sessionSpending, setSessionSpending] = useState(0); // Track spending in cents (1000 units = 1 cent)
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [totalElapsedTime, setTotalElapsedTime] = useState(0); // Accumulated time across start/stop cycles
+  const [lastPaymentMinute, setLastPaymentMinute] = useState(0); // Track which minute mark we last paid for
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const paymentIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastProcessedMinuteRef = useRef<number>(0); // Local ref to track processed minutes immediately
   
   const getBalancesRef = useRef<(() => Promise<void>) | null>(null);
   
@@ -199,11 +201,6 @@ export default function SignedInScreen() {
         timerIntervalRef.current = null;
       }
       
-      if (paymentIntervalRef.current) {
-        clearInterval(paymentIntervalRef.current);
-        paymentIntervalRef.current = null;
-      }
-      
       // Accumulate the elapsed time from this session
       if (sessionStartTime) {
         const currentSessionTime = Date.now() - sessionStartTime;
@@ -220,18 +217,53 @@ export default function SignedInScreen() {
       setSessionStartTime(now);
       setIsRunning(true);
       
+      // Reset the processed minute ref when starting
+      lastProcessedMinuteRef.current = lastPaymentMinute;
+      
       // Start timer interval (updates every second)
-      timerIntervalRef.current = setInterval(() => {
+      timerIntervalRef.current = setInterval(async () => {
         const currentSessionTime = Date.now() - now;
-        setElapsedTime(totalElapsedTime + currentSessionTime);
+        const newElapsedTime = totalElapsedTime + currentSessionTime;
+        setElapsedTime(newElapsedTime);
+        
+        // Check if we've crossed a new interval mark
+        const currentMinute = Math.floor(newElapsedTime / (1000 * 10)); // Convert to 10-second intervals
+        if (currentMinute > lastPaymentMinute && currentMinute > 0 && !apiLoading && currentMinute > lastProcessedMinuteRef.current) {
+          console.log(`Crossed interval mark: ${currentMinute}, last payment minute: ${lastPaymentMinute}, last processed: ${lastProcessedMinuteRef.current}`);
+          
+          // Immediately update the ref to prevent duplicate calls
+          lastProcessedMinuteRef.current = currentMinute;
+          setLastPaymentMinute(currentMinute);
+          
+          // Make payment request and handle failure
+          try {
+            const paymentSuccess = await makePaymentRequest();
+            if (!paymentSuccess) {
+              console.error('Payment failed, stopping timer to prevent continuous failures');
+              // Stop the timer to prevent continuous failed requests
+              if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+                timerIntervalRef.current = null;
+              }
+              setIsRunning(false);
+              return; // Exit the interval function
+            }
+          } catch (error) {
+            console.error('Payment request error:', error);
+            // Stop the timer on error
+            if (timerIntervalRef.current) {
+              clearInterval(timerIntervalRef.current);
+              timerIntervalRef.current = null;
+            }
+            setIsRunning(false);
+            return; // Exit the interval function
+          }
+        }
       }, 1000);
       
-      // Start payment interval (first payment after 60 seconds)
-      paymentIntervalRef.current = setInterval(async () => {
-        await makePaymentRequest();
-      }, 60000);
+
     }
-  }, [isRunning, makePaymentRequest, sessionStartTime, totalElapsedTime]);
+  }, [isRunning, makePaymentRequest, sessionStartTime, totalElapsedTime, lastPaymentMinute, apiLoading]);
 
   // Reset session handler
   const handleResetSession = useCallback(() => {
@@ -242,10 +274,6 @@ export default function SignedInScreen() {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
-      if (paymentIntervalRef.current) {
-        clearInterval(paymentIntervalRef.current);
-        paymentIntervalRef.current = null;
-      }
     }
     
     // Reset all session data
@@ -253,6 +281,8 @@ export default function SignedInScreen() {
     setTotalElapsedTime(0);
     setSessionSpending(0);
     setSessionStartTime(null);
+    setLastPaymentMinute(0);
+    lastProcessedMinuteRef.current = 0; // Reset the ref
     setApiResult(null);
     setApiError('');
   }, [isRunning]);
@@ -266,16 +296,13 @@ export default function SignedInScreen() {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
       }
-      if (paymentIntervalRef.current) {
-        clearInterval(paymentIntervalRef.current);
-        paymentIntervalRef.current = null;
-      }
     }
     
     // Clear localStorage items
     try {
       localStorage.removeItem(STORAGE_KEYS.TOTAL_ELAPSED_TIME);
       localStorage.removeItem(STORAGE_KEYS.SESSION_SPENDING);
+      localStorage.removeItem(STORAGE_KEYS.LAST_PAYMENT_MINUTE);
     } catch (error) {
       console.warn('Failed to clear localStorage:', error);
     }
@@ -285,6 +312,8 @@ export default function SignedInScreen() {
     setTotalElapsedTime(0);
     setSessionSpending(0);
     setSessionStartTime(null);
+    setLastPaymentMinute(0);
+    lastProcessedMinuteRef.current = 0; // Reset the ref
     setApiResult(null);
     setApiError('');
   }, [isRunning]);
@@ -294,9 +323,6 @@ export default function SignedInScreen() {
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
-      }
-      if (paymentIntervalRef.current) {
-        clearInterval(paymentIntervalRef.current);
       }
     };
   }, []);
@@ -335,6 +361,7 @@ export default function SignedInScreen() {
   useEffect(() => {
     const savedTotalElapsedTime = loadFromLocalStorage(STORAGE_KEYS.TOTAL_ELAPSED_TIME);
     const savedSessionSpending = loadFromLocalStorage(STORAGE_KEYS.SESSION_SPENDING);
+    const savedLastPaymentMinute = loadFromLocalStorage(STORAGE_KEYS.LAST_PAYMENT_MINUTE);
     
     if (savedTotalElapsedTime > 0) {
       setTotalElapsedTime(savedTotalElapsedTime);
@@ -343,6 +370,11 @@ export default function SignedInScreen() {
     
     if (savedSessionSpending > 0) {
       setSessionSpending(savedSessionSpending);
+    }
+    
+    if (savedLastPaymentMinute > 0) {
+      setLastPaymentMinute(savedLastPaymentMinute);
+      lastProcessedMinuteRef.current = savedLastPaymentMinute; // Initialize ref with saved value
     }
   }, []);
 
@@ -355,6 +387,11 @@ export default function SignedInScreen() {
   useEffect(() => {
     saveToLocalStorage(STORAGE_KEYS.SESSION_SPENDING, sessionSpending);
   }, [sessionSpending]);
+
+  // Save lastPaymentMinute to localStorage whenever it changes
+  useEffect(() => {
+    saveToLocalStorage(STORAGE_KEYS.LAST_PAYMENT_MINUTE, lastPaymentMinute);
+  }, [lastPaymentMinute]);
 
   return (
     <>
